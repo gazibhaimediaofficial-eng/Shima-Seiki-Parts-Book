@@ -1,0 +1,79 @@
+name: Build Shima Seiki Parts Book APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and extract project ZIP
+        shell: bash
+        run: |
+          ZIP="$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)"
+
+          if [ -z "$ZIP" ]; then
+            echo "Project ZIP not found"
+            exit 1
+          fi
+
+          mkdir project
+          unzip -q "$ZIP" -d project
+
+          ROOT="$(find project -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+
+          if [ -z "$ROOT" ]; then
+            ROOT="project"
+          fi
+
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          gradle --no-daemon clean assembleDebug
+
+      - name: Prepare final APK
+        shell: bash
+        run: |
+          APK="$(find "${PROJECT_ROOT}/app/build/outputs/apk/debug" -name '*.apk' -print -quit)"
+
+          if [ -z "$APK" ]; then
+            echo "APK was not generated"
+            exit 1
+          fi
+
+          cp "$APK" "Shima_Seiki_Parts_Book_Final.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shima-Seiki-Parts-Book-APK
+          path: Shima_Seiki_Parts_Book_Final.apk
